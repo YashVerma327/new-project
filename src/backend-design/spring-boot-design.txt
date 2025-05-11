@@ -1,0 +1,207 @@
+
+# Spring Boot Backend Design for Weather App
+
+## Project Structure
+
+```
+src/
+├── main/
+│   ├── java/
+│   │   └── com/
+│   │       └── weatherapp/
+│   │           ├── WeatherAppApplication.java
+│   │           ├── config/
+│   │           │   ├── SecurityConfig.java
+│   │           │   └── WebConfig.java
+│   │           ├── controller/
+│   │           │   ├── AuthController.java
+│   │           │   ├── UserController.java
+│   │           │   └── WeatherController.java
+│   │           ├── dto/
+│   │           │   ├── AuthRequest.java
+│   │           │   ├── AuthResponse.java
+│   │           │   ├── UserDto.java
+│   │           │   ├── WeatherDto.java
+│   │           │   └── ForecastDto.java
+│   │           ├── exception/
+│   │           │   ├── GlobalExceptionHandler.java
+│   │           │   ├── ResourceNotFoundException.java
+│   │           │   └── UnauthorizedException.java
+│   │           ├── model/
+│   │           │   ├── User.java
+│   │           │   ├── Role.java
+│   │           │   ├── WeatherData.java
+│   │           │   └── SearchHistory.java
+│   │           ├── repository/
+│   │           │   ├── UserRepository.java
+│   │           │   ├── RoleRepository.java
+│   │           │   ├── WeatherDataRepository.java
+│   │           │   └── SearchHistoryRepository.java
+│   │           ├── security/
+│   │           │   ├── JwtTokenProvider.java
+│   │           │   ├── JwtAuthenticationFilter.java
+│   │           │   └── UserDetailsServiceImpl.java
+│   │           └── service/
+│   │               ├── AuthService.java
+│   │               ├── UserService.java
+│   │               ├── WeatherService.java
+│   │               └── ExternalWeatherApiService.java
+│   └── resources/
+│       ├── application.properties
+│       ├── application-dev.properties
+│       └── application-prod.properties
+└── test/
+    └── java/
+        └── com/
+            └── weatherapp/
+                ├── controller/
+                ├── service/
+                └── repository/
+```
+
+## Database Schema (PostgreSQL)
+
+### Users Table
+```sql
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Roles Table
+```sql
+CREATE TABLE roles (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE
+);
+
+INSERT INTO roles (name) VALUES ('ROLE_USER'), ('ROLE_ADMIN');
+```
+
+### User_Roles Table
+```sql
+CREATE TABLE user_roles (
+    user_id INTEGER REFERENCES users(id),
+    role_id INTEGER REFERENCES roles(id),
+    PRIMARY KEY (user_id, role_id)
+);
+```
+
+### Search_History Table
+```sql
+CREATE TABLE search_history (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    location VARCHAR(100) NOT NULL,
+    searched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Weather_Data Table (Cache)
+```sql
+CREATE TABLE weather_data (
+    id SERIAL PRIMARY KEY,
+    location VARCHAR(100) NOT NULL,
+    data JSONB NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_weather_location ON weather_data(location);
+CREATE INDEX idx_weather_expires ON weather_data(expires_at);
+```
+
+## Key Components
+
+### Security
+- JWT-based authentication
+- Password encryption with BCrypt
+- Role-based authorization
+
+### API Endpoints
+
+#### Authentication
+- `POST /api/auth/register` - Register a new user
+- `POST /api/auth/login` - Login and get JWT token
+- `POST /api/auth/refresh` - Refresh JWT token
+
+#### User Management
+- `GET /api/users/me` - Get current user profile
+- `PUT /api/users/me` - Update user profile
+- `GET /api/users/me/history` - Get search history
+
+#### Weather Data
+- `GET /api/weather?location={city}` - Get current weather
+- `GET /api/weather/forecast?location={city}` - Get 5-day forecast
+- `GET /api/weather/hourly?location={city}` - Get hourly forecast
+
+### External API Integration
+- Integration with a third-party weather API (e.g., OpenWeatherMap, WeatherAPI)
+- Caching mechanism to reduce external API calls
+- Rate limiting to prevent abuse
+
+### Configuration
+```properties
+# application.properties
+
+# Server Configuration
+server.port=8080
+
+# Database Configuration
+spring.datasource.url=jdbc:postgresql://localhost:5432/weatherapp
+spring.datasource.username=${DB_USERNAME}
+spring.datasource.password=${DB_PASSWORD}
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+# JWT Configuration
+jwt.secret=${JWT_SECRET}
+jwt.expiration=86400000
+
+# Weather API Configuration
+weather.api.key=${WEATHER_API_KEY}
+weather.api.url=https://api.example.com/weather
+weather.cache.ttl=3600000
+
+# Logging
+logging.level.org.springframework.web=INFO
+logging.level.com.weatherapp=DEBUG
+```
+
+## Implementation Notes
+
+### Authentication Flow
+1. User registers with email and password
+2. Password is encrypted and stored in the database
+3. On login, user receives JWT token
+4. Token is included in Authorization header for subsequent requests
+
+### Weather Data Flow
+1. Client requests weather data for a location
+2. Backend checks cache for recent data
+3. If cache miss, backend calls external weather API
+4. Data is cached and returned to client
+5. Search is recorded in user's history (if authenticated)
+
+### Error Handling
+- Global exception handler for consistent error responses
+- Specific exceptions for common error cases
+- Proper HTTP status codes for different error scenarios
+
+### Performance Considerations
+- Connection pooling for database
+- Caching of weather data to reduce API calls
+- Pagination for search history
+- Proper indexing on database tables
+
+### Security Considerations
+- HTTPS for all communications
+- Input validation to prevent SQL injection
+- CORS configuration
+- Rate limiting to prevent abuse
+- Environment variables for sensitive configuration
